@@ -23,13 +23,12 @@ import datetime
 import os
 import sys
 
-from enum import Enum
 from time import perf_counter
 
 import h5py
 import numpy as np
 
-from ._version import __version__, codename
+from ._version import __version__
 from .constants import c
 from .constants import e0
 from .constants import m0

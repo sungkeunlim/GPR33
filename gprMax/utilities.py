@@ -31,7 +31,7 @@ from colorama import Fore
 from colorama import Style
 import numpy as np
 
-from gprMax.constants import floattype
+from .constants import floattype
 from ._version import __version__
 from ._version import codename
 
