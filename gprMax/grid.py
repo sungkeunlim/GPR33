@@ -15,22 +15,23 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with gprMax.  If not, see <http://www.gnu.org/licenses/>.
-
 from collections import OrderedDict
 
 from colorama import init
 from colorama import Fore
 from colorama import Style
-init()
-import numpy as np
-np.seterr(invalid='raise')
 
-from gprMax.constants import c
-from gprMax.constants import floattype
-from gprMax.constants import complextype
-from gprMax.materials import Material
-from gprMax.pml import PML
-from gprMax.utilities import round_value
+import numpy as np
+
+from .constants import c
+from .constants import floattype
+from .constants import complextype
+from .materials import Material
+from .pml import PML
+from .utilities import round_value
+
+init()
+np.seterr(invalid='raise')
 
 
 class Grid(object):
@@ -70,8 +71,50 @@ class Grid(object):
                 raise ValueError(co)
 
     def calculate_coord(self, coord, val):
+        """Function to calculate the discrete node value
+        """
         co = round_value(float(val) / getattr(self, 'd' + coord))
         return co
+
+    def calculate_coord_3(self, x, y, z):
+        x1 = self.calculate_coord('x', x)
+        y1 = self.calculate_coord('y', y)
+        z1 = self.calculate_coord('z', z)
+        return (x1, y1, z1)
+
+    def calculate_coord_2(self, x, y):
+        x1 = self.calculate_coord('x', x)
+        y1 = self.calculate_coord('y', y)
+        return (x1, y1)
+
+    def calculate_disc_coord(self, coord, val):
+        """
+            Function to calculate the coordinate value at
+            nearest grid point
+        """
+        n = self.calculate_coord(coord, val)
+        return n * getattr(self, 'd' + coord)
+
+    def calculate_disc_coord_3(self, x, y, z):
+        x1 = self.calculate_disc_coord('x', x)
+        y1 = self.calculate_disc_coord('y', y)
+        z1 = self.calculate_disc_coord('z', z)
+        return (x1, y1, z1)
+
+    def are_coords_within_bounds(self, *args):
+        """
+        function to determine whether a set of coordinates
+        are within the user defined bounds of the subgrid. Use
+        absolute coordinate that have been discretised correctly.
+        """
+        names = ['x', 'y', 'z']
+        for coords in args:
+            for n, co in zip(names, coords):
+                if co < getattr(self, n + '1'):
+                    return False
+                if co > getattr(self, n + '2'):
+                    return False
+        return True
 
 
 class FDTDGrid(Grid):
@@ -95,7 +138,8 @@ class FDTDGrid(Grid):
         self.highestfreqthres = 40
         # Maximum allowable percentage physical phase-velocity phase error
         self.maxnumericaldisp = 2
-        # Minimum grid sampling of smallest wavelength for physical wave propagation
+        # Minimum grid sampling of smallest wavelength for physical wave
+        # propagation
         self.mingridsampling = 3
 
         self.nx = 0
@@ -105,14 +149,15 @@ class FDTDGrid(Grid):
         self.dy = 0
         self.dz = 0
         self.dt = 0
+
         self.dimension = None
         self.iterations = 0
         self.timewindow = 0
 
         # Ordered dictionary required so that PMLs are always updated in the
         # same order. The order itself does not matter, however, if must be the
-        # same from model to model otherwise the numerical precision from adding
-        # the PML corrections will be different.
+        # same from model to model otherwise the numerical precision from
+        # adding the PML corrections will be different.
         self.pmlthickness = OrderedDict((key, 10) for key in PML.boundaryIDs)
         self.cfs = []
         self.pmls = []
@@ -129,44 +174,78 @@ class FDTDGrid(Grid):
         self.magneticdipoles = []
         self.transmissionlines = []
         self.rxs = []
+
+        self.timestep = None
+        self.abs_time = 0
+
         self.srcsteps = [0, 0, 0]
         self.rxsteps = [0, 0, 0]
         self.snapshots = []
 
+    def __str__(self):
+        s = ''
+        s += Fore.MAGENTA
+        s += 'FDTD GRID\n'
+        s += 'Total Cells {} {} {}\n'.format(self.nx, self.ny, self.nz)
+        s += 'Position: {} {} {} {} {} {}\n'.format(
+            self.x1, self.y1, self.z1, self.x2, self.y2, self.z2)
+        for h in self.hertziandipoles:
+            s += 'Hertizian dipole: {} {} {}\n'.format(
+                h.xcoord, h.ycoord, h.zcoord)
+            s += str([x for x in self.waveforms
+                      if x.ID == h.waveformID][0]) + '\n'
+        for r in self.rxs:
+            s += 'Receiver: {} {} {}\n'.format(r.xcoord, r.ycoord, r.zcoord)
+        s += Style.RESET_ALL
+        return s
+
     def initialise_geometry_arrays(self):
         """
         Initialise an array for volumetric material IDs (solid);
-            boolean arrays for specifying whether materials can have dielectric smoothing (rigid);
+            boolean arrays for specifying whether materials can have
+            dielectric smoothing (rigid);
             and an array for cell edge IDs (ID).
         Solid and ID arrays are initialised to free_space (one);
             rigid arrays to allow dielectric smoothing (zero).
         """
-        self.solid = np.ones((self.nx, self.ny, self.nz), dtype=np.uint32)
-        self.rigidE = np.zeros((12, self.nx, self.ny, self.nz), dtype=np.int8)
-        self.rigidH = np.zeros((6, self.nx, self.ny, self.nz), dtype=np.int8)
-        self.ID = np.ones((6, self.nx + 1, self.ny + 1, self.nz + 1), dtype=np.uint32)
+        nx = self.nx
+        ny = self.ny
+        nz = self.nz
+        self.solid = np.ones((nx, ny, nz), dtype=np.uint32)
+        self.rigidE = np.zeros((12, nx, ny, nz), dtype=np.int8)
+        self.rigidH = np.zeros((6, nx, ny, nz), dtype=np.int8)
+        self.ID = np.ones((6, nx + 1, ny + 1, nz + 1), dtype=np.uint32)
         self.IDlookup = {'Ex': 0, 'Ey': 1, 'Ez': 2, 'Hx': 3, 'Hy': 4, 'Hz': 5}
 
     def initialise_field_arrays(self):
         """Initialise arrays for the electric and magnetic field components."""
-        self.Ex = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=floattype)
-        self.Ey = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=floattype)
-        self.Ez = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=floattype)
-        self.Hx = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=floattype)
-        self.Hy = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=floattype)
-        self.Hz = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), dtype=floattype)
+        nx = self.nx + 1
+        ny = self.ny + 1
+        nz = self.nz + 1
+        self.Ex = np.zeros((nx, ny, nz), dtype=floattype)
+        self.Ey = np.zeros((nx, ny, nz), dtype=floattype)
+        self.Ez = np.zeros((nx, ny, nz), dtype=floattype)
+        self.Hx = np.zeros((nx, ny, nz), dtype=floattype)
+        self.Hy = np.zeros((nx, ny, nz), dtype=floattype)
+        self.Hz = np.zeros((nx, ny, nz), dtype=floattype)
 
     def initialise_std_update_coeff_arrays(self):
         """Initialise arrays for storing update coefficients."""
-        self.updatecoeffsE = np.zeros((len(self.materials), 5), dtype=floattype)
-        self.updatecoeffsH = np.zeros((len(self.materials), 5), dtype=floattype)
+        l = len(self.materials)
+        self.updatecoeffsE = np.zeros((l, 5), dtype=floattype)
+        self.updatecoeffsH = np.copy(self.updatecoeffsE)
 
     def initialise_dispersive_arrays(self):
-        """Initialise arrays for storing coefficients when there are dispersive materials present."""
-        self.Tx = np.zeros((Material.maxpoles, self.nx + 1, self.ny + 1, self.nz + 1), dtype=complextype)
-        self.Ty = np.zeros((Material.maxpoles, self.nx + 1, self.ny + 1, self.nz + 1), dtype=complextype)
-        self.Tz = np.zeros((Material.maxpoles, self.nx + 1, self.ny + 1, self.nz + 1), dtype=complextype)
-        self.updatecoeffsdispersive = np.zeros((len(self.materials), 3 * Material.maxpoles), dtype=complextype)
+        """Initialise arrays for storing coefficients when there are dispersive
+        materials present."""
+        nx = self.nx + 1
+        ny = self.ny + 1
+        nz = self.nz + 1
+        self.Tx = np.zeros((Material.maxpoles, nx, ny, nz), dtype=complextype)
+        self.Ty = np.zeros((Material.maxpoles, nx, ny, nz), dtype=complextype)
+        self.Tz = np.zeros((Material.maxpoles, nx, ny, nz), dtype=complextype)
+        self.updatecoeffsdispersive = np.zeros(
+            (len(self.materials), 3 * Material.maxpoles), dtype=complextype)
 
 
 def dispersion_analysis(G):
@@ -175,7 +254,8 @@ def dispersion_analysis(G):
         worse case of maximum frequency and minimum wavelength
 
     Args:
-        G (class): Grid class instance - holds essential parameters describing the model.
+        G (class): Grid class instance - holds essential parameters describing
+        the model.
 
     Returns:
         results (dict): Results from dispersion analysis
@@ -183,7 +263,13 @@ def dispersion_analysis(G):
 
     # Physical phase velocity error (percentage); grid sampling density;
     # material with maximum permittivity; maximum significant frequency
-    results = {'deltavp': False, 'N': False, 'waveform': True, 'material': False, 'maxfreq': []}
+    results = {
+        'deltavp': False,
+        'N': False,
+        'waveform': True,
+        'material': False,
+        'maxfreq': []
+    }
 
     # Find maximum significant frequency
     if G.waveforms:
@@ -210,7 +296,8 @@ def dispersion_analysis(G):
                         waveformvalues[timeiter.index] = waveform.calculate_value(timeiter[0], G.dt)
                         timeiter.iternext()
 
-                # Ensure source waveform is not being overly truncated before attempting any FFT
+                # Ensure source waveform is not being overly truncated before
+                # attempting any FFT
                 if np.abs(waveformvalues[-1]) < np.abs(np.amax(waveformvalues)) / 100:
                     # Calculate magnitude of frequency spectra of waveform
                     power = 10 * np.log10(np.abs(np.fft.fft(waveformvalues))**2)
@@ -223,7 +310,8 @@ def dispersion_analysis(G):
                     freqmaxpower = np.where(np.isclose(power[1::], np.amax(power[1::])))[0][0]
 
                     # Set maximum frequency to a threshold drop from maximum power, ignoring DC value
-                    freq = np.where((np.amax(power[freqmaxpower::]) - power[freqmaxpower::]) > G.highestfreqthres)[0][0] + 1
+                    freq = np.where(
+                        (np.amax(power[freqmaxpower::]) - power[freqmaxpower::]) > G.highestfreqthres)[0][0] + 1
                     results['maxfreq'].append(freqs[freq])
 
                 # If waveform is truncated don't do any further analysis
@@ -241,7 +329,8 @@ def dispersion_analysis(G):
         for x in G.materials:
             if x.se != float('inf'):
                 er = x.er
-                # If there are dispersive materials calculate the complex relative permittivity
+                # If there are dispersive materials calculate the complex
+                # relative permittivity
                 # at maximum frequency and take the real part
                 if x.poles > 0:
                     er = x.calculate_er(results['maxfreq'])
@@ -277,7 +366,9 @@ def dispersion_analysis(G):
         # Check grid sampling will result in physical wave propagation
         if int(np.floor(results['N'])) >= G.mingridsampling:
             # Numerical phase velocity
-            vp = np.pi / (results['N'] * np.arcsin((1 / S) * np.sin((np.pi * S) / results['N'])))
+            vp = np.pi / (
+                results['N'] * np.arcsin((1 / S) * np.sin(
+                    (np.pi * S) / results['N'])))
 
             # Physical phase velocity error (percentage)
             results['deltavp'] = (((vp * c) - c) / c) * 100
@@ -309,14 +400,15 @@ def Ix(x, y, z, Hx, Hy, Hz, G):
     Args:
         x, y, z (float): Coordinates of position in grid.
         Hx, Hy, Hz (memory view): numpy array of magnetic field values.
-        G (class): Grid class instance - holds essential parameters describing the model.
+        G (class): Grid class instance - holds essential parameters describing
+        the model.
     """
 
     if y == 0 or z == 0:
         Ix = 0
-
     else:
-        Ix = G.dy * (Hy[x, y, z - 1] - Hy[x, y, z]) + G.dz * (Hz[x, y, z] - Hz[x, y - 1, z])
+        Ix = (G.dy * (Hy[x, y, z - 1] - Hy[x, y, z])
+              + G.dz * (Hz[x, y, z] - Hz[x, y - 1, z]))
 
     return Ix
 
@@ -327,14 +419,15 @@ def Iy(x, y, z, Hx, Hy, Hz, G):
     Args:
         x, y, z (float): Coordinates of position in grid.
         Hx, Hy, Hz (memory view): numpy array of magnetic field values.
-        G (class): Grid class instance - holds essential parameters describing the model.
+        G (class): Grid class instance - holds essential parameters
+        describing the model.
     """
 
     if x == 0 or z == 0:
         Iy = 0
-
     else:
-        Iy = G.dx * (Hx[x, y, z] - Hx[x, y, z - 1]) + G.dz * (Hz[x - 1, y, z] - Hz[x, y, z])
+        Iy = (G.dx * (Hx[x, y, z] - Hx[x, y, z - 1])
+              + G.dz * (Hz[x - 1, y, z] - Hz[x, y, z]))
 
     return Iy
 
@@ -345,13 +438,14 @@ def Iz(x, y, z, Hx, Hy, Hz, G):
     Args:
         x, y, z (float): Coordinates of position in grid.
         Hx, Hy, Hz (memory view): numpy array of magnetic field values.
-        G (class): Grid class instance - holds essential parameters describing the model.
+        G (class): Grid class instance - holds essential parameters
+        describing the model.
     """
 
     if x == 0 or y == 0:
         Iz = 0
-
     else:
-        Iz = G.dx * (Hx[x, y - 1, z] - Hx[x, y, z]) + G.dy * (Hy[x, y, z] - Hy[x - 1, y, z])
+        Iz = (G.dx * (Hx[x, y - 1, z] - Hx[x, y, z])
+              + G.dy * (Hy[x, y, z] - Hy[x - 1, y, z]))
 
     return Iz
