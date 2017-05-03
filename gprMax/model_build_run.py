@@ -24,40 +24,39 @@ import sys
 from time import perf_counter
 
 from colorama import init, Fore, Style
-init()
+
 import numpy as np
 from terminaltables import AsciiTable
 from tqdm import tqdm
 
-from gprMax.constants import floattype, cfloattype, ccomplextype
-from gprMax.exceptions import GeneralError
+from .exceptions import GeneralError
 
-from gprMax.fields_outputs import store_outputs
-from gprMax.fields_outputs import write_hdf5_outputfile
+from .fields_outputs import store_outputs
+from .fields_outputs import write_hdf5_outputfile
 
-from gprMax.fields_updates import update_electric
-from gprMax.fields_updates import update_magnetic
-from gprMax.fields_updates import update_electric_dispersive_multipole_A
-from gprMax.fields_updates import update_electric_dispersive_multipole_B
-from gprMax.fields_updates import update_electric_dispersive_1pole_A
-from gprMax.fields_updates import update_electric_dispersive_1pole_B
+from .fields_updates import update_electric
+from .fields_updates import update_magnetic
+from .fields_updates import update_electric_dispersive_multipole_A
+from .fields_updates import update_electric_dispersive_multipole_B
+from .fields_updates import update_electric_dispersive_1pole_A
+from .fields_updates import update_electric_dispersive_1pole_B
 
-from gprMax.grid import FDTDGrid
-from gprMax.grid import dispersion_analysis
-from gprMax.input_cmds_geometry import process_geometrycmds
-from gprMax.input_cmds_file import process_python_include_code
-from gprMax.input_cmds_file import write_processed_file
-from gprMax.input_cmds_file import check_cmd_names
-from gprMax.input_cmds_multiuse import process_multicmds
-from gprMax.input_cmds_singleuse import process_singlecmds
-from gprMax.materials import Material, process_materials
-from gprMax.pml import PML
-from gprMax.pml import build_pmls
-from gprMax.utilities import get_terminal_width
-from gprMax.utilities import human_size
-from gprMax.utilities import open_path_file
-from gprMax.yee_cell_build import build_electric_components
-from gprMax.yee_cell_build import build_magnetic_components
+from .grid import FDTDGrid
+from .grid import dispersion_analysis
+from .input_cmds_geometry import process_geometrycmds
+from .input_cmds_file import process_python_include_code
+from .input_cmds_file import write_processed_file
+from .input_cmds_file import check_cmd_names
+from .input_cmds_multiuse import process_multicmds
+from .input_cmds_singleuse import process_singlecmds
+from .materials import Material, process_materials
+from .pml import build_pmls
+from .utilities import get_terminal_width
+from .utilities import human_size
+from .yee_cell_build import build_electric_components
+from .yee_cell_build import build_magnetic_components
+
+init()
 
 
 def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile, usernamespace):
