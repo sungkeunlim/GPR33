@@ -29,10 +29,13 @@ import textwrap
 from colorama import init
 from colorama import Fore
 from colorama import Style
-init()
 import numpy as np
 
 from gprMax.constants import floattype
+from ._version import __version__
+from ._version import codename
+
+init()
 
 
 def get_terminal_width():
@@ -49,13 +52,13 @@ def get_terminal_width():
     return terminalwidth
 
 
-def logo(version):
+def logo():
     """Print gprMax logo, version, and licencing/copyright information.
 
     Args:
         version (str): Version number.
     """
-
+    version = __version__ + ' (' + codename + ')'
     description = '\n=== Electromagnetic modelling software based on the Finite-Difference Time-Domain (FDTD) method'
     copyright = 'Copyright (C) 2015-2017: The University of Edinburgh'
     authors = 'Authors: Craig Warren and Antonis Giannopoulos'

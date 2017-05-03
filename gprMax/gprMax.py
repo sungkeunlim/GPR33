@@ -48,8 +48,7 @@ def main():
     """This is the main function for gprMax."""
 
     # Print gprMax logo, version, and licencing/copyright information
-
-    logo(__version__ + ' (' + codename + ')')
+    logo()
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(prog='gprMax', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -87,7 +86,7 @@ def api(
 ):
 
     # Print gprMax logo, version, and licencing/copyright information
-    logo(__version__ + ' (' + codename + ')')
+    logo()
 
     """If installed as a module this is the entry point."""
 
