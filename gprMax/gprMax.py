@@ -29,24 +29,26 @@ from time import perf_counter
 import h5py
 import numpy as np
 
-from gprMax._version import __version__, codename
-from gprMax.constants import c
-from gprMax.constants import e0
-from gprMax.constants import m0
-from gprMax.constants import z0
-from gprMax.exceptions import GeneralError
-from gprMax.model_build_run import run_model
-from gprMax.utilities import get_host_info
-from gprMax.utilities import get_terminal_width
-from gprMax.utilities import human_size
-from gprMax.utilities import logo
-from gprMax.utilities import open_path_file
+from ._version import __version__, codename
+from .constants import c
+from .constants import e0
+from .constants import m0
+from .constants import z0
+from .exceptions import GeneralError
+from .model_build_run import run_model
+from .utilities import get_host_info
+from .utilities import get_terminal_width
+from .utilities import human_size
+from .utilities import logo
+from .utilities import open_path_file
+from .geometry_objects import write_scene
 
 
 def main():
     """This is the main function for gprMax."""
 
     # Print gprMax logo, version, and licencing/copyright information
+
     logo(__version__ + ' (' + codename + ')')
 
     # Parse command line arguments
@@ -62,34 +64,41 @@ def main():
     parser.add_argument('--geometry-fixed', action='store_true', default=False, help='flag to not reprocess model geometry, e.g. for B-scans where the geometry is fixed')
     parser.add_argument('--write-processed', action='store_true', default=False, help='flag to write an input file after any Python code and include commands in the original input file have been processed')
     parser.add_argument('--opt-taguchi', action='store_true', default=False, help='flag to optimise parameters using the Taguchi optimisation method')
+    parser.add_argument('--xdmf-output', action='store_true', default=False, help='store geometry view in XDMF Format')
     args = parser.parse_args()
+
+    args.interface = 'cli'
 
     run_main(args)
 
 
 def api(
-            inputfile,
-            n=1,
-            task=None,
-            restart=None,
-            mpi=False,
-            benchmark=False,
-            geometry_only=False,
-            geometry_fixed=False,
-            write_processed=False,
-            opt_taguchi=False
-        ):
-    """If installed as a module this is the entry point."""
+    scene,
+    n=1,
+    task=None,
+    restart=None,
+    mpi=False,
+    benchmark=False,
+    geometry_only=False,
+    geometry_fixed=False,
+    write_processed=False,
+    opt_taguchi=False,
+    xdmf_output=False
+):
 
     # Print gprMax logo, version, and licencing/copyright information
     logo(__version__ + ' (' + codename + ')')
+
+    """If installed as a module this is the entry point."""
+
+    fp = write_scene(scene)
 
     class ImportArguments:
         pass
 
     args = ImportArguments()
 
-    args.inputfile = inputfile
+    args.inputfile = fp
     args.n = n
     args.task = task
     args.restart = restart
@@ -99,11 +108,14 @@ def api(
     args.geometry_fixed = geometry_fixed
     args.write_processed = write_processed
     args.opt_taguchi = opt_taguchi
+    args.xdmf_output = xdmf_output
+    args.interface = 'api'
 
     run_main(args)
 
 
 def run_main(args):
+
     """
     Top-level function that controls what mode of simulation (standard/optimsation/benchmark etc...) is run.
 
