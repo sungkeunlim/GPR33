@@ -183,6 +183,12 @@ class FDTDGrid(Grid):
         self.snapshots = []
 
     def __str__(self):
+        """
+        Function to give a human readable description of the FDTD object
+
+        Returns:
+            description (str) -- Description of the FDTD object.
+        """
         s = ''
         s += Fore.MAGENTA
         s += 'FDTD GRID\n'
