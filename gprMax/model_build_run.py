@@ -21,7 +21,6 @@ import itertools
 import os
 import psutil
 import sys
-from time import perf_counter
 
 from colorama import init, Fore, Style
 
@@ -31,15 +30,7 @@ from tqdm import tqdm
 
 from .exceptions import GeneralError
 
-from .fields_outputs import store_outputs
 from .fields_outputs import write_hdf5_outputfile
-
-from .fields_updates import update_electric
-from .fields_updates import update_magnetic
-from .fields_updates import update_electric_dispersive_multipole_A
-from .fields_updates import update_electric_dispersive_multipole_B
-from .fields_updates import update_electric_dispersive_1pole_A
-from .fields_updates import update_electric_dispersive_1pole_B
 
 from .grid import FDTDGrid
 from .grid import dispersion_analysis
@@ -55,12 +46,15 @@ from .utilities import get_terminal_width
 from .utilities import human_size
 from .yee_cell_build import build_electric_components
 from .yee_cell_build import build_magnetic_components
+from .solvers import CPUSolver
 
 init()
 
 
-def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile, usernamespace):
-    """Runs a model - processes the input file; builds the Yee cells; calculates update coefficients; runs main FDTD loop.
+def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
+              usernamespace):
+    """Runs a model - processes the input file; builds the Yee cells;
+    calculates update coefficients; runs main FDTD loop.
 
     Args:
         args (dict): Namespace with command line arguments
@@ -270,7 +264,17 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile, usern
         print('\nOutput file: {}\n'.format(outputfile))
 
         # Main FDTD solving functions for either CPU or GPU
-        tsolve = solve_cpu(currentmodelrun, modelend, G)
+        desc = 'Running simulation, model {}/{}'.format(str(currentmodelrun),
+                                                        str(modelend))
+        iterations = tqdm(
+                          range(G.iterations),
+                          desc=desc,
+                          ncols=get_terminal_width() - 1,
+                          file=sys.stdout,
+                          disable=G.tqdmdisable)
+
+        cpusolver = CPUSolver(G, iterations)
+        tsolve = cpusolver.solve()
 
         # Write an output file in HDF5 format
         write_hdf5_outputfile(outputfile, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G)
@@ -283,77 +287,5 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile, usern
         # class instance must be global so that it persists
         if not args.geometry_fixed:
             del G
-
-    return tsolve
-
-
-def solve_cpu(currentmodelrun, modelend, G):
-    """
-    Solving using FDTD method on CPU. Parallelised using Cython (OpenMP) for
-    electric and magnetic field updates, and PML updates.
-
-    Args:
-        currentmodelrun (int): Current model run number.
-        modelend (int): Number of last model to run.
-        G (class): Grid class instance - holds essential parameters describing the model.
-
-    Returns:
-        tsolve (float): Time taken to execute solving
-    """
-
-    tsolvestart = perf_counter()
-
-    for iteration in tqdm(range(G.iterations), desc='Running simulation, model ' + str(currentmodelrun) + '/' + str(modelend), ncols=get_terminal_width() - 1, file=sys.stdout, disable=G.tqdmdisable):
-        # Store field component values for every receiver and transmission line
-        store_outputs(iteration, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G)
-
-        # Write any snapshots to file
-        for i, snap in enumerate(G.snapshots):
-            if snap.time == iteration + 1:
-                snapiters = 36 * (((snap.xf - snap.xs) / snap.dx) * ((snap.yf - snap.ys) / snap.dy) * ((snap.zf - snap.zs) / snap.dz))
-                pbar = tqdm(total=snapiters, leave=False, unit='byte', unit_scale=True, desc='  Writing snapshot file {} of {}, {}'.format(i + 1, len(G.snapshots), os.path.split(snap.filename)[1]), ncols=get_terminal_width() - 1, file=sys.stdout, disable=G.tqdmdisable)
-                snap.write_vtk_imagedata(G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G, pbar)
-                pbar.close()
-
-        # Update magnetic field components
-        update_magnetic(G.nx, G.ny, G.nz, G.nthreads, G.updatecoeffsH, G.ID, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz)
-
-        # Update magnetic field components with the PML correction
-        for pml in G.pmls:
-            pml.update_magnetic(G)
-
-        # Update magnetic field components from sources
-        for source in G.transmissionlines + G.magneticdipoles:
-            source.update_magnetic(iteration, G.updatecoeffsH, G.ID, G.Hx, G.Hy, G.Hz, G)
-
-        # Update electric field components
-        # All materials are non-dispersive so do standard update
-        if Material.maxpoles == 0:
-            update_electric(G.nx, G.ny, G.nz, G.nthreads, G.updatecoeffsE, G.ID, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz)
-        # If there are any dispersive materials do 1st part of dispersive update
-        # (it is split into two parts as it requires present and updated electric field values).
-        elif Material.maxpoles == 1:
-            update_electric_dispersive_1pole_A(G.nx, G.ny, G.nz, G.nthreads, G.updatecoeffsE, G.updatecoeffsdispersive, G.ID, G.Tx, G.Ty, G.Tz, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz)
-        elif Material.maxpoles > 1:
-            update_electric_dispersive_multipole_A(G.nx, G.ny, G.nz, G.nthreads, Material.maxpoles, G.updatecoeffsE, G.updatecoeffsdispersive, G.ID, G.Tx, G.Ty, G.Tz, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz)
-
-        # Update electric field components with the PML correction
-        for pml in G.pmls:
-            pml.update_electric(G)
-
-        # Update electric field components from sources (update any Hertzian dipole sources last)
-        for source in G.voltagesources + G.transmissionlines + G.hertziandipoles:
-            source.update_electric(iteration, G.updatecoeffsE, G.ID, G.Ex, G.Ey, G.Ez, G)
-
-        # If there are any dispersive materials do 2nd part of dispersive update
-        # (it is split into two parts as it requires present and updated electric
-        # field values). Therefore it can only be completely updated after the
-        # electric field has been updated by the PML and source updates.
-        if Material.maxpoles == 1:
-            update_electric_dispersive_1pole_B(G.nx, G.ny, G.nz, G.nthreads, G.updatecoeffsdispersive, G.ID, G.Tx, G.Ty, G.Tz, G.Ex, G.Ey, G.Ez)
-        elif Material.maxpoles > 1:
-            update_electric_dispersive_multipole_B(G.nx, G.ny, G.nz, G.nthreads, Material.maxpoles, G.updatecoeffsdispersive, G.ID, G.Tx, G.Ty, G.Tz, G.Ex, G.Ey, G.Ez)
-
-    tsolve = perf_counter() - tsolvestart
 
     return tsolve

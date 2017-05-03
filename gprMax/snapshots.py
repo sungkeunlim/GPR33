@@ -21,12 +21,35 @@ import sys
 from struct import pack
 
 import numpy as np
+from tqdm import tqdm
 
 from gprMax.constants import floattype
 from gprMax.grid import Ix
 from gprMax.grid import Iy
 from gprMax.grid import Iz
 from gprMax.utilities import round_value
+from .utilities import get_terminal_width
+
+
+def write_snapshots(G):
+    # Write any snapshots to file
+    for i, snap in enumerate(G.snapshots):
+        if snap.time == G.iteration + 1:
+            snapiters = 36 * (((
+                              (snap.xf - snap.xs) / snap.dx)
+                              * ((snap.yf - snap.ys) / snap.dy)
+                              * ((snap.zf - snap.zs) / snap.dz)))
+            pbar = tqdm(total=snapiters,
+                        leave=False,
+                        unit='byte',
+                        unit_scale=True,
+                        desc=snap.create_description(i, G),
+                        ncols=get_terminal_width() - 1,
+                        file=sys.stdout,
+                        disable=G.tqdmdisable)
+            snap.write_vtk_imagedata(G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz,
+                                     G, pbar)
+            pbar.close()
 
 
 class Snapshot(object):
@@ -66,6 +89,11 @@ class Snapshot(object):
         self.dz = dz
         self.time = time
         self.basefilename = filename
+
+    def create_description(self, i, G):
+        d = '  Writing snapshot file {} of {}, {}'
+        d = d.format(i + 1, len(G.snapshots), os.path.split(self.filename)[1])
+        return d
 
     def prepare_vtk_imagedata(self, appendmodelnumber, G):
         """Prepares a VTK ImageData (.vti) file for a snapshot.
