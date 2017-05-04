@@ -148,14 +148,14 @@ class Material(object):
 
         Args:
             freq (float): Frequency used to calculate complex relative permittivity.
-            
+
         Returns:
             er (float): Complex relative permittivity.
         """
-        
+
         # This will be permittivity at infinite frequency if the material is dispersive
         er = self.er
-        
+
         if self.poles > 0:
             w = 2 * np.pi * freq
             er += self.se / (w * e0)
@@ -169,7 +169,7 @@ class Material(object):
                 for pole in range(self.poles):
                     ersum += self.tau[pole]**2 / (w**2 - 1j * w * self.alpha[pole])
                     er -= ersum
-    
+
         return er
 
 
@@ -332,3 +332,16 @@ class PeplinskiSoil(object):
                 G.materials.append(m)
 
             muiter.iternext()
+
+
+def create_built_in_materials(G):
+
+    m = Material(0, 'pec')
+    m.se = float('inf')
+    m.type = 'builtin'
+    m.averagable = False
+    G.materials.append(m)
+
+    m = Material(1, 'free_space')
+    m.type = 'builtin'
+    G.materials.append(m)

@@ -41,6 +41,7 @@ from .input_cmds_file import check_cmd_names
 from .input_cmds_multiuse import process_multicmds
 from .input_cmds_singleuse import process_singlecmds
 from .materials import Material, process_materials
+from .materials import create_built_in_materials
 from .pml import build_pmls
 from .utilities import get_terminal_width
 from .utilities import human_size
@@ -49,6 +50,81 @@ from .yee_cell_build import build_magnetic_components
 from .solvers import CPUSolver
 
 init()
+
+
+def adjust_source_positions(G):
+
+    currentmodelrun = G.model_run_conf.currentmodelrun
+    modelend = G.model_run_conf.modelend
+
+    # Adjust position of simple sources and receivers if required
+    if G.srcsteps[0] != 0 or G.srcsteps[1] != 0 or G.srcsteps[2] != 0:
+        for source in itertools.chain(G.hertziandipoles, G.magneticdipoles):
+            if currentmodelrun == 1:
+                if source.xcoord + G.srcsteps[0] * modelend < 0 or source.xcoord + G.srcsteps[0] * modelend > G.nx or source.ycoord + G.srcsteps[1] * modelend < 0 or source.ycoord + G.srcsteps[1] * modelend > G.ny or source.zcoord + G.srcsteps[2] * modelend < 0 or source.zcoord + G.srcsteps[2] * modelend > G.nz:
+                    raise GeneralError('Source(s) will be stepped to a position outside the domain.')
+            source.xcoord = source.xcoordorigin + (currentmodelrun - 1) * G.srcsteps[0]
+            source.ycoord = source.ycoordorigin + (currentmodelrun - 1) * G.srcsteps[1]
+            source.zcoord = source.zcoordorigin + (currentmodelrun - 1) * G.srcsteps[2]
+    if G.rxsteps[0] != 0 or G.rxsteps[1] != 0 or G.rxsteps[2] != 0:
+        for receiver in G.rxs:
+            if currentmodelrun == 1:
+                if receiver.xcoord + G.rxsteps[0] * modelend < 0 or receiver.xcoord + G.rxsteps[0] * modelend > G.nx or receiver.ycoord + G.rxsteps[1] * modelend < 0 or receiver.ycoord + G.rxsteps[1] * modelend > G.ny or receiver.zcoord + G.rxsteps[2] * modelend < 0 or receiver.zcoord + G.rxsteps[2] * modelend > G.nz:
+                    raise GeneralError('Receiver(s) will be stepped to a position outside the domain.')
+            receiver.xcoord = receiver.xcoordorigin + (currentmodelrun - 1) * G.rxsteps[0]
+            receiver.ycoord = receiver.ycoordorigin + (currentmodelrun - 1) * G.rxsteps[1]
+            receiver.zcoord = receiver.zcoordorigin + (currentmodelrun - 1) * G.rxsteps[2]
+
+
+class ModelRunConfig:
+
+    def __init__(self, inputfile, currentmodelrun, modelend,
+                 appendmodelnumber):
+        self.modelend = modelend
+        self.currentmodelrun = currentmodelrun
+        self.inputfile = inputfile
+        self.inputfilename = os.path.split(inputfile.name)[1]
+        self.inputdirectory = os.path.dirname(os.path.abspath(inputfile.name))
+        inputfileparts = os.path.splitext(os.path.join(self.inputdirectory,
+                                                       self.inputfilename))
+        self.outputfilepath = inputfileparts[0] + appendmodelnumber + '.out'
+        self.s = '\n--- Model {}/{}, input file: {}'
+        self.format_input_s()
+
+    def format_input_s(self):
+        self.inputfilestr = self.s.format(
+            self.currentmodelrun, self.modelend, self.inputfile.name)
+
+    def __str__(self):
+        s = Fore.GREEN
+        s += '{} {}\n'
+        mod = '-' * (get_terminal_width() - 1 - len(self.inputfilestr))
+        s = s.format(self.inputfilestr, mod)
+        s += Style.RESET_ALL
+        return s
+
+
+class ModelRunFixed(ModelRunConfig):
+
+    def __init__(self, inputfile, currentmodelrun, modelend):
+        super().__init__(inputfile, currentmodelrun, modelend)
+        self.s = ("\n--- Model {}/{}, input file (not re-processed, i.e."
+                  "geometry fixed): {}"
+                  )
+        self.format_input_s()
+
+
+def create_model_run_conf(type, inputfile, currentmodelrun, modelend,
+                          appendmodelnumber):
+
+    if type == 'fixed':
+        model_run_conf = ModelRunFixed(inputfile, currentmodelrun, modelend,
+                                       appendmodelnumber)
+    else:
+        model_run_conf = ModelRunConfig(inputfile, currentmodelrun, modelend,
+                                        appendmodelnumber)
+        print(model_run_conf)
+        G.model_run_conf = model_run_conf
 
 
 def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
@@ -78,16 +154,15 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
     # Used for naming geometry and output files
     appendmodelnumber = '' if numbermodelruns == 1 and not args.task and not args.restart else str(currentmodelrun)
 
-    # Normal model reading/building process; bypassed if geometry information to be reused
+    # Normal model reading/building process; bypassed if geometry information
+    # to be reused
     if 'G' not in globals():
 
         # Initialise an instance of the FDTDGrid class
         G = FDTDGrid()
 
-        G.inputfilename = os.path.split(inputfile.name)[1]
-        G.inputdirectory = os.path.dirname(os.path.abspath(inputfile.name))
-        inputfilestr = '\n--- Model {}/{}, input file: {}'.format(currentmodelrun, modelend, inputfile.name)
-        print(Fore.GREEN + '{} {}\n'.format(inputfilestr, '-' * (get_terminal_width() - 1 - len(inputfilestr))) + Style.RESET_ALL)
+        create_model_run_conf('notfixed', inputfile, currentmodelrun, modelend,
+                              appendmodelnumber)
 
         # Add the current model run to namespace that can be accessed by
         # user in any Python code blocks in input file
@@ -110,15 +185,7 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
         # Check validity of command names and that essential commands are present
         singlecmds, multicmds, geometry = check_cmd_names(processedlines)
 
-        # Create built-in materials
-        m = Material(0, 'pec')
-        m.se = float('inf')
-        m.type = 'builtin'
-        m.averagable = False
-        G.materials.append(m)
-        m = Material(1, 'free_space')
-        m.type = 'builtin'
-        G.materials.append(m)
+        create_built_in_materials(G)
 
         # Process parameters for commands that can only occur once in the model
         process_singlecmds(singlecmds, G)
@@ -204,8 +271,8 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
 
     # If geometry information to be reused between model runs
     else:
-        inputfilestr = '\n--- Model {}/{}, input file (not re-processed, i.e. geometry fixed): {}'.format(currentmodelrun, modelend, inputfile.name)
-        print(Fore.GREEN + '{} {}\n'.format(inputfilestr, '-' * (get_terminal_width() - 1 - len(inputfilestr))) + Style.RESET_ALL)
+        create_model_run_conf('fixed', inputfile, currentmodelrun, modelend,
+                              appendmodelnumber)
 
         # Clear arrays for field components
         G.initialise_field_arrays()
@@ -214,23 +281,7 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
         for pml in G.pmls:
             pml.initialise_field_arrays()
 
-    # Adjust position of simple sources and receivers if required
-    if G.srcsteps[0] != 0 or G.srcsteps[1] != 0 or G.srcsteps[2] != 0:
-        for source in itertools.chain(G.hertziandipoles, G.magneticdipoles):
-            if currentmodelrun == 1:
-                if source.xcoord + G.srcsteps[0] * modelend < 0 or source.xcoord + G.srcsteps[0] * modelend > G.nx or source.ycoord + G.srcsteps[1] * modelend < 0 or source.ycoord + G.srcsteps[1] * modelend > G.ny or source.zcoord + G.srcsteps[2] * modelend < 0 or source.zcoord + G.srcsteps[2] * modelend > G.nz:
-                    raise GeneralError('Source(s) will be stepped to a position outside the domain.')
-            source.xcoord = source.xcoordorigin + (currentmodelrun - 1) * G.srcsteps[0]
-            source.ycoord = source.ycoordorigin + (currentmodelrun - 1) * G.srcsteps[1]
-            source.zcoord = source.zcoordorigin + (currentmodelrun - 1) * G.srcsteps[2]
-    if G.rxsteps[0] != 0 or G.rxsteps[1] != 0 or G.rxsteps[2] != 0:
-        for receiver in G.rxs:
-            if currentmodelrun == 1:
-                if receiver.xcoord + G.rxsteps[0] * modelend < 0 or receiver.xcoord + G.rxsteps[0] * modelend > G.nx or receiver.ycoord + G.rxsteps[1] * modelend < 0 or receiver.ycoord + G.rxsteps[1] * modelend > G.ny or receiver.zcoord + G.rxsteps[2] * modelend < 0 or receiver.zcoord + G.rxsteps[2] * modelend > G.nz:
-                    raise GeneralError('Receiver(s) will be stepped to a position outside the domain.')
-            receiver.xcoord = receiver.xcoordorigin + (currentmodelrun - 1) * G.rxsteps[0]
-            receiver.ycoord = receiver.ycoordorigin + (currentmodelrun - 1) * G.rxsteps[1]
-            receiver.zcoord = receiver.zcoordorigin + (currentmodelrun - 1) * G.rxsteps[2]
+    adjust_source_positions(G)
 
     # Write files for any geometry views and geometry object outputs
     if not (G.geometryviews or G.geometryobjectswrite) and args.geometry_only:
@@ -259,9 +310,9 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
             snapshot.prepare_vtk_imagedata(appendmodelnumber, G)
 
         # Output filename
-        inputfileparts = os.path.splitext(os.path.join(G.inputdirectory, G.inputfilename))
-        outputfile = inputfileparts[0] + appendmodelnumber + '.out'
-        print('\nOutput file: {}\n'.format(outputfile))
+        of = G.model_run_conf.outputfilepath
+
+        print('\nOutput file: {}\n'.format(of))
 
         # Main FDTD solving functions for either CPU or GPU
         desc = 'Running simulation, model {}/{}'.format(str(currentmodelrun),
@@ -277,7 +328,7 @@ def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
         tsolve = cpusolver.solve()
 
         # Write an output file in HDF5 format
-        write_hdf5_outputfile(outputfile, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G)
+        write_hdf5_outputfile(of, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G)
 
         if G.messages:
             print('Memory (RAM) used: ~{}'.format(human_size(p.memory_info().rss)))
