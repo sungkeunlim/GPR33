@@ -34,7 +34,7 @@ from ._version import __version__
 def create_simulation(config):
     """Fork into one of 3 operating modes"""
     if config.args.benchmark:
-        sim = BenchmarkSim(config)  # Benchmarking simulation
+        sim = BenchmarkSim(config)         # Benchmarking simulation
     elif config.args.opt_taguchi:
         sim = TaguchiSim(config)           # Taguchi simulation
     else:
@@ -246,16 +246,12 @@ class BenchmarkSim(Sim):
     def __init__(self, config):
         super().__init__(config)
 
-    @time_sim
-    def run(self):
-
-        config = self.config
-        host_info = config.host_info
+    def calc_threads_per_sim(self):
         # Number of CPU threads to benchmark - start from single thread and
         # double threads until maximum number of physical cores
         threads = 1
-        maxthreads = host_info.physicalcores
-        maxthreadspersocket = maxthreads / host_info.sockets
+        maxthreads = self.config.host_info.physicalcores
+        maxthreadspersocket = maxthreads / self.config.host_info.sockets
         cputhreads = np.array([], dtype=np.int32)
         while threads < maxthreadspersocket:
             cputhreads = np.append(cputhreads, int(threads))
@@ -269,37 +265,41 @@ class BenchmarkSim(Sim):
         if cputhreads[-1] != maxthreads:
             cputhreads = np.append(cputhreads, int(maxthreads))
         cputhreads = cputhreads[::-1]
-        cputimes = np.zeros(len(cputhreads))
 
-        number_model_runs = len(cputhreads)
-        modelend = number_model_runs + 1
-        config.modelend = modelend - 1
+        return cputhreads
 
-        config.usernamespace['number_model_runs'] = number_model_runs
+    @time_sim
+    def run(self):
 
-        for currentmodelrun in range(1, modelend):
-            config.currentmodelrun = currentmodelrun
-            omp_num_threads = str(cputhreads[currentmodelrun - 1])
-            os.environ['OMP_NUM_THREADS'] = omp_num_threads
-            cputimes[currentmodelrun - 1] = run_model(config)
+        cpu_threads = self.calc_threads_per_sim()
+        number_model_runs = len(cpu_threads)
+        cputimes = []
 
-            # Get model size (in cells) and number of iterations
-            if currentmodelrun == 1:
-                outputfile = os.path.splitext(config.args.inputfile)[0]
-                if number_model_runs == 1:
-                    outputfile += '.out'
-                else:
-                    outputfile += str(currentmodelrun) + '.out'
-                f = h5py.File(outputfile, 'r')
-                iterations = f.attrs['Iterations']
-                numcells = f.attrs['nx, ny, nz']
+        self.config.usernamespace['number_model_runs'] = number_model_runs
+        self.config.modelend = number_model_runs
+
+        for i, n_threads in enumerate(cpu_threads):
+            self.config.currentmodelrun = i + 1
+            os.environ['OMP_NUM_THREADS'] = str(n_threads)
+            cputimes.append(run_model(self.config))
+
+        # Get model size (in cells) and number of iterations
+        outputfile = os.path.splitext(self.config.args.inputfile)[0]
+        if number_model_runs == 1:
+            outputfile += '.out'
+        else:
+            outputfile += str(1) + '.out'
+
+        f = h5py.File(outputfile, 'r')
+        iterations = f.attrs['Iterations']
+        numcells = f.attrs['nx, ny, nz']
 
         # Save number of threads and benchmarking times to NumPy archive
         np.savez(os.path.splitext(
-                 config.inputfile.name)[0],
-                 machineID=host_info.machineID_long,
+                 self.config.inputfile.name)[0],
+                 machineID=self.config.host_info.machineID_long,
                  gpuIDs=[],
-                 cputhreads=cputhreads,
+                 cputhreads=cpu_threads,
                  cputimes=cputimes,
                  gputimes=[],
                  iterations=iterations,

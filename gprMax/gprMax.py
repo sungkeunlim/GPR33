@@ -105,8 +105,8 @@ def run_main(args):
     with open_path_file(args.inputfile) as inputfile:
 
         config = TopLevelConfig(args, inputfile)      # Main configuration
-        print(config.host_info)            # Print user system information
+        print(config.host_info)  # Print user system information
 
         sim = create_simulation(config)
-        sim.run()
-        print(sim)
+        sim.run()   # Run the simulation
+        print(sim)  # Print out some information about what happened
