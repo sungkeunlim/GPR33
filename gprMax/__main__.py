@@ -1,5 +1,4 @@
 """gprMax.__main__: executed when gprMax directory is called as script."""
-
 import gprMax.gprMax
 
 if __name__ == '__main__':

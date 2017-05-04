@@ -127,23 +127,23 @@ def create_model_run_conf(type, inputfile, currentmodelrun, modelend,
         G.model_run_conf = model_run_conf
 
 
-def run_model(args, currentmodelrun, modelend, numbermodelruns, inputfile,
-              usernamespace):
+def run_model(config):
     """Runs a model - processes the input file; builds the Yee cells;
     calculates update coefficients; runs main FDTD loop.
 
     Args:
-        args (dict): Namespace with command line arguments
-        currentmodelrun (int): Current model run number.
-        modelend (int): Number of last model to run.
-        numbermodelruns (int): Total number of model runs.
-        inputfile (object): File object for the input file.
-        usernamespace (dict): Namespace that can be accessed by user
-                in any Python code blocks in input file.
+        config (config): Configuration object. see config.py
 
     Returns:
         tsolve (int): Length of time (seconds) of main FDTD calculations
     """
+
+    args = config.args
+    currentmodelrun = config.currentmodelrun
+    modelend = config.modelend
+    numbermodelruns = config.usernamespace['number_model_runs']
+    inputfile = config.inputfile
+    usernamespace = config.usernamespace
 
     # Monitor memory usage
     p = psutil.Process()
