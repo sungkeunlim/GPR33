@@ -143,7 +143,7 @@ def check_dispersion(G):
 
 def write_geometry_views(config, G):
         # Write files for any geometry views and geometry object outputs
-        if not (G.geometryviews or G.geometryobjectswrite) and args.geometry_only:
+        if not (G.geometryviews or G.geometryobjectswrite) and config.args.geometry_only:
             print(Fore.RED + '\nWARNING: No geometry views or geometry objects to output found.' + Style.RESET_ALL)
         if G.geometryviews:
             print()
@@ -179,6 +179,9 @@ def run_model(config):
     Returns:
         tsolve (int): Length of time (seconds) of main FDTD calculations
     """
+
+    if config.model_config is None:
+        raise GeneralError('You Must configure the model run')
 
     # Monitor memory usage
     p = psutil.Process()

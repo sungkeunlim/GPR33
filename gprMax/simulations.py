@@ -29,6 +29,7 @@ from .exceptions import GeneralError
 from .model_build_run import run_model
 from .utilities import get_terminal_width
 from ._version import __version__
+from .config import ModelConfig
 
 
 def create_simulation(config):
@@ -279,33 +280,29 @@ class BenchmarkSim(Sim):
 
     @time_sim
     def run(self):
-
+        config = self.config
         cpu_threads = self.calc_threads_per_sim()
-        number_model_runs = len(cpu_threads)
+        n_models = len(cpu_threads)
         cputimes = []
 
-        self.config.usernamespace['number_model_runs'] = number_model_runs
-        self.config.modelend = number_model_runs
+        self.config.usernamespace['number_model_runs'] = n_models
+        self.config.n_models = n_models
 
         for i, n_threads in enumerate(cpu_threads):
-            self.config.currentmodelrun = i + 1
+            self.config.model_number = i
             os.environ['OMP_NUM_THREADS'] = str(n_threads)
-            cputimes.append(run_model(self.config))
+            # Configure the model run
+            config.model_config = ModelConfig(config.inputfile, i, n_models)
+            solve_time = run_model(self.config)
+            cputimes.append(solve_time)
 
-        # Get model size (in cells) and number of iterations
-        outputfile = os.path.splitext(self.config.args.inputfile)[0]
-        if number_model_runs == 1:
-            outputfile += '.out'
-        else:
-            outputfile += str(1) + '.out'
-
-        f = h5py.File(outputfile, 'r')
-        iterations = f.attrs['Iterations']
-        numcells = f.attrs['nx, ny, nz']
+            if i == 0:
+                f = h5py.File(config.model_config.outputfile_path, 'r')
+                iterations = f.attrs['Iterations']
+                numcells = f.attrs['nx, ny, nz']
 
         # Save number of threads and benchmarking times to NumPy archive
-        np.savez(os.path.splitext(
-                 self.config.inputfile.name)[0],
+        np.savez(config.inputfile.file_path_no_ext,
                  machineID=self.config.host_info.machineID_long,
                  gpuIDs=[],
                  cputhreads=cpu_threads,
