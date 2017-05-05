@@ -32,21 +32,12 @@ from .constants import z0
 
 init()
 
-
-# parameter for single model
-
-# model_number
-# input file
-# input file path
-# input file directory
-# output file
-# output file directory
-
 # TO HAVE PROGRESS BARS OR NOT
 TQDM = True
 
 
 def get_iterations(config, G):
+    """Returns an iterable to iterate through G timesteps."""
     if TQDM:
         # Main FDTD solving functions for either CPU or GPU
         desc = 'Running simulation, model {}/{}'
@@ -65,6 +56,8 @@ def get_iterations(config, G):
 
 class MetaFile():
 
+    """Class to hold input file and path information"""
+
     def __init__(self, f):
         self.file = f
         self.file_name = f.name
@@ -75,9 +68,17 @@ class MetaFile():
 
 
 class ModelConfig:
+    """Class to configure gprMax at a model level. This is the information
+    which is specific to each run."""
 
     def __init__(self, inputfile, model_number, number_of_models):
+        """
 
+        Arguments:
+            inputfile {MetaFile} -- Meta input file containing user input file
+            model_number {int} -- 0 index of the model to be run
+            number_of_models {int} -- total number of models to be run
+        """
         self.inputfile = inputfile
         self.model_number = model_number
         self.number_of_models = number_of_models
@@ -91,7 +92,8 @@ class ModelConfig:
         else:
             self.p_model_number = ''
 
-        self.outputfile_path = self.inputfile.file_path_no_ext + self.p_model_number + '.out'
+        self.outputfile_path = (self.inputfile.file_path_no_ext
+                                + self.p_model_number + '.out')
 
     def format_input_s(self):
         self.inputfilestr = self.s.format(
@@ -119,7 +121,7 @@ class ModelRunFixed(ModelConfig):
 class HostInfo():
 
     def __init__(self):
-        # Create a readible host information
+        """Convient class to describe host machine"""
         host_info = get_host_info()
         hp = ', {} cores with Hyper-Threading'  # does support hyperthreading?
         if host_info['hyperthreading']:
@@ -161,8 +163,12 @@ class HostInfo():
 
 
 class TopLevelConfig:
+    """
+    Class to describe configuration of gprMax simulation
+    """
 
     def __init__(self, args, inputfile):
+        # args provided by the user from cli or api
         self.args = args
         self.host_info = HostInfo()
         # Create a separate namespace that users can access in any
