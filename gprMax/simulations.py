@@ -226,16 +226,25 @@ class CPUSim(Sim):
         """
         config = self.config
         modelstart, modelend = self.model_start_end()
-        config.modelend = modelend - 1
 
-        for currentmodelrun in range(modelstart, modelend):
-            config.currentmodelrun = currentmodelrun
+        config.n_models = modelend - 1
+
+        from .config import ModelConfig
+
+        for model_number in range(config.n_models):
+
+            model_config = ModelConfig(config.inputfile, model_number,
+                                       config.n_models)
+            config.model_config = model_config
+            config.model_number = model_number
+
             # If Taguchi optimistaion, add specific value for each parameter to
             # optimise for each experiment to user accessible namespace
             if optparams:
                 tmp = {}
                 tmp.update((key, value[currentmodelrun - 1]) for key, value in optparams.items())
                 config.usernamespace.update({'optparams': tmp})
+
             run_model(config)
 
         return None

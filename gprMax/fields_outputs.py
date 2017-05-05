@@ -46,7 +46,7 @@ def store_outputs(iteration, Ex, Ey, Ez, Hx, Hy, Hz, G):
         tl.Itotal[iteration] = tl.current[tl.antpos]
 
 
-def write_hdf5_outputfile(outputfile, Ex, Ey, Ez, Hx, Hy, Hz, G):
+def write_hdf5_outputfile(outputfile_path, Ex, Ey, Ez, Hx, Hy, Hz, G):
     """Write an output file in HDF5 format.
 
     Args:
@@ -55,7 +55,7 @@ def write_hdf5_outputfile(outputfile, Ex, Ey, Ez, Hx, Hy, Hz, G):
         G (class): Grid class instance - holds essential parameters describing the model.
     """
 
-    f = h5py.File(outputfile, 'w')
+    f = h5py.File(outputfile_path, 'w')
     f.attrs['gprMax'] = __version__
     f.attrs['Title'] = G.title
     f.attrs['Iterations'] = G.iterations
