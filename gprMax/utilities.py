@@ -38,6 +38,10 @@ from ._version import codename
 init()
 
 
+def wrap_string_in_warning(s):
+    return Fore.RED + s + Style.RESET_ALL
+
+
 def get_terminal_width():
     """Get/set width of terminal being used.
 
