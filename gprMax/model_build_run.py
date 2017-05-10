@@ -297,9 +297,9 @@ def run_model(config):
             print('Memory (RAM) used: ~{}'.format(human_size(p.memory_info().rss)))
             print('Solving time [HH:MM:SS]: {}'.format(datetime.timedelta(seconds=tsolve)))
 
-        # If geometry information to be reused between model runs then FDTDGrid
-        # class instance must be global so that it persists
-        if not config.args.geometry_fixed:
-            del G
+    # If geometry information to be reused between model runs then FDTDGrid
+    # class instance must be global so that it persists
+    if not args.geometry_fixed:
+        del G
 
     return tsolve
