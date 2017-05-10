@@ -35,6 +35,22 @@ init()
 # TO HAVE PROGRESS BARS OR NOT
 TQDM = True
 
+if sys.platform == 'win32':
+    TQDM = False
+
+
+def create_geometry_iterable(geometry):
+    if TQDM:
+        it = tqdm(
+                geometry,
+                desc='Processing geometry related cmds',
+                unit='cmds',
+                ncols=get_terminal_width() - 1,
+                file=sys.stdout)
+        return it
+    else:
+        return geometry
+
 
 def get_iterations(config, G):
     """Returns an iterable to iterate through G timesteps."""
