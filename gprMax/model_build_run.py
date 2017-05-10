@@ -47,7 +47,7 @@ from .utilities import get_terminal_width
 from .utilities import human_size
 from .yee_cell_build import build_electric_components
 from .yee_cell_build import build_magnetic_components
-from .solvers import CPUSolver
+from .solvers.factor import create_solver
 from .config import get_iterations
 
 init()
@@ -286,9 +286,8 @@ def run_model(config):
 
         print('\nOutput file: {}\n'.format(of_path))
 
-        iterations = get_iterations(config, G)
-        cpusolver = CPUSolver(G, iterations)
-        tsolve = cpusolver.solve()
+        solver = create_solver(G, config)
+        tsolve = solver.solve()
 
         # Write an output file in HDF5 format
         write_hdf5_outputfile(of_path, G.Ex, G.Ey, G.Ez, G.Hx, G.Hy, G.Hz, G)
