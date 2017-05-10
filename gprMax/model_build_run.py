@@ -299,7 +299,7 @@ def run_model(config):
 
     # If geometry information to be reused between model runs then FDTDGrid
     # class instance must be global so that it persists
-    if not args.geometry_fixed:
+    if not config.args.geometry_fixed:
         del G
 
     return tsolve
